@@ -1,0 +1,7 @@
+{
+  "name": "Endecja GraphLab Pro",
+  "description": "Advanced Knowledge Graph Workspace for Demystifying National Democracy history using Gemini 3.",
+  "requestFramePermissions": [
+    "microphone"
+  ]
+}

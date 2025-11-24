@@ -1,0 +1,58 @@
+export interface Node {
+  id: string;
+  label: string;
+  type: 'person' | 'organization' | 'event' | 'publication' | 'concept';
+  dates?: string;
+  description: string;
+  importance: number; // 0 to 1
+  group?: number; // Louvain community ID
+  centrality?: number; // Calculated PageRank
+  x?: number;
+  y?: number;
+  vx?: number;
+  vy?: number;
+}
+
+export interface Link {
+  source: string | Node;
+  target: string | Node;
+  relationship: string;
+  dates?: string;
+  value?: number;
+}
+
+export interface Myth {
+  id: string;
+  title: string;
+  claim: string;
+  truth: string;
+  sources: string[];
+  severity: 'wysoka' | 'średnia' | 'niska' | 'krytyczna';
+  relatedNodes: string[];
+  category: string;
+}
+
+export interface GraphData {
+  nodes: Node[];
+  edges: Link[];
+  myths: Myth[];
+}
+
+export interface TimelineEvent {
+  year: number;
+  label: string;
+  nodeId: string;
+}
+
+export enum AppMode {
+  EXPLORE = 'EXPLORE',
+  ANALYSIS = 'ANALYSIS',
+}
+
+export interface ChatMessage {
+  id: string;
+  role: 'user' | 'model';
+  text: string;
+  timestamp: number;
+  isThinking?: boolean;
+}
