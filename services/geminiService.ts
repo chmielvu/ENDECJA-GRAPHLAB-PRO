@@ -1,66 +1,58 @@
-import { GoogleGenAI, Type } from "@google/genai";
+import { GoogleGenAI } from "@google/genai";
 import { DMOWSKI_SYSTEM_PROMPT } from "../constants";
+import { Node, Link } from '../types';
 
+// Access env safely
 const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
 
-// Chat with Gemini 3 Pro (Thinking)
-export const sendMessageToDmowski = async (history: {role: string, parts: string}[], message: string) => {
+// Helper to parse graph updates from text
+const extractGraphData = (text: string): { newNodes: Node[], newEdges: Link[] } | null => {
+  try {
+    const jsonMatch = text.match(/```json\n([\s\S]*?)\n```/);
+    if (jsonMatch && jsonMatch[1]) {
+      return JSON.parse(jsonMatch[1]);
+    }
+  } catch (e) {
+    console.error("Failed to parse graph expansion", e);
+  }
+  return null;
+};
+
+export const sendMessageToDmowski = async (
+  history: {role: string, parts: string}[], 
+  message: string,
+  currentGraphContext: string
+) => {
   try {
     const response = await ai.models.generateContent({
-      model: 'gemini-3-pro-preview',
+      model: 'gemini-3-pro-preview', // Using Gemini 3 Pro for complex reasoning
       contents: [
-        { role: 'user', parts: [{ text: DMOWSKI_SYSTEM_PROMPT }] }, // Prime the persona
+        { role: 'user', parts: [{ text: DMOWSKI_SYSTEM_PROMPT }] },
+        { role: 'user', parts: [{ text: `KONTEKST GRAFU: ${currentGraphContext}. 
+          JEŚLI użytkownik prosi o dodanie informacji/węzłów, zwróć JSON na końcu odpowiedzi w formacie:
+          \`\`\`json
+          { "newNodes": [...], "newEdges": [...] }
+          \`\`\`
+          Ensure 'id' fields in JSON are unique and URL-friendly strings.
+          Thinking is enabled for historical accuracy.
+        `}]},
         ...history.map(h => ({ role: h.role === 'user' ? 'user' : 'model', parts: [{ text: h.parts }] })),
         { role: 'user', parts: [{ text: message }] }
       ],
       config: {
-        thinkingConfig: { thinkingBudget: 4000 }, // Enable thinking for historical nuance
+        thinkingConfig: { thinkingBudget: 4000 }
       }
     });
-    return response.text || "Przepraszam, zamyśliłem się nad losami Europy. Proszę powtórzyć.";
-  } catch (error) {
-    console.error("Gemini Chat Error:", error);
-    return "Wybacz, chwilowe zakłócenia na łączach z historią.";
-  }
-};
 
-// Search Grounding for Fact Checking
-export const checkFactWithSearch = async (query: string) => {
-  try {
-    const response = await ai.models.generateContent({
-      model: 'gemini-2.5-flash',
-      contents: `Verify this claim about Polish history/Endecja: "${query}". Provide a concise summary with sources.`,
-      config: {
-        tools: [{ googleSearch: {} }]
-      }
-    });
+    const fullText = response.text || "";
+    const graphUpdates = extractGraphData(fullText);
     
-    const text = response.text;
-    const grounding = response.candidates?.[0]?.groundingMetadata?.groundingChunks || [];
-    
-    return { text, grounding };
-  } catch (error) {
-    console.error("Search Error:", error);
-    return null;
-  }
-};
+    // Remove JSON from text for display
+    const displayText = fullText.replace(/```json[\s\S]*?```/, '').trim();
 
-// Generate historical image visualization
-export const generateHistoricalImage = async (prompt: string) => {
-  try {
-    const response = await ai.models.generateImages({
-      model: 'imagen-3.0-generate-002', // Fallback if 3-pro-image-preview not avail, but prompt asked for pro
-      prompt: `Historical artistic style, 1920s oil painting style. ${prompt}`,
-      config: {
-        numberOfImages: 1,
-        aspectRatio: '16:9'
-      }
-    });
-    // Note: Actual Imagen API signature might vary in this specific env, 
-    // sticking to standard generateImages if available or generateContent for 2.5-flash-image
-    return response.generatedImages?.[0]?.image?.imageBytes;
+    return { text: displayText, graphUpdates };
   } catch (error) {
-     // Fallback to flash image if needed or return null
-     return null;
+    console.error("Gemini Error:", error);
+    return { text: "Przepraszam, depesza z Paryża nie dotarła. Proszę powtórzyć.", graphUpdates: null };
   }
 };

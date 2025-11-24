@@ -7,6 +7,7 @@ export interface Node {
   importance: number; // 0 to 1
   group?: number; // Louvain community ID
   centrality?: number; // Calculated PageRank
+  kCore?: number; // K-Core shell
   x?: number;
   y?: number;
   vx?: number;
@@ -48,6 +49,8 @@ export enum AppMode {
   EXPLORE = 'EXPLORE',
   ANALYSIS = 'ANALYSIS',
 }
+
+export type ColorMode = 'type' | 'community' | 'kcore' | 'importance';
 
 export interface ChatMessage {
   id: string;

@@ -1,14 +1,15 @@
 import React, { useEffect, useRef, useState } from 'react';
 import * as d3 from 'd3';
-import { GraphData, Node, Link } from '../types';
+import { GraphData, Node, Link, ColorMode } from '../types';
 
 interface GraphCanvasProps {
   data: GraphData;
   onNodeClick: (node: Node) => void;
   highlightNodeId?: string | null;
+  colorMode: ColorMode;
 }
 
-const GraphCanvas: React.FC<GraphCanvasProps> = ({ data, onNodeClick, highlightNodeId }) => {
+const GraphCanvas: React.FC<GraphCanvasProps> = ({ data, onNodeClick, highlightNodeId, colorMode }) => {
   const svgRef = useRef<SVGSVGElement>(null);
   const containerRef = useRef<HTMLDivElement>(null);
 
@@ -56,14 +57,26 @@ const GraphCanvas: React.FC<GraphCanvasProps> = ({ data, onNodeClick, highlightN
         .on("end", dragended) as any);
 
     // Node Circles (Art Deco Style)
-    // Gold border for high importance
+    // Dynamic Fill based on ColorMode
     node.append("circle")
       .attr("r", (d: any) => 5 + (d.importance || 0.5) * 20)
       .attr("fill", (d: any) => {
-        if (d.type === 'person') return "#1e40af"; // Blue
-        if (d.type === 'organization') return "#b91c1c"; // Red
-        if (d.type === 'event') return "#d97706"; // Amber
-        return "#3f3f46"; // Zinc
+        if (colorMode === 'type') {
+          if (d.type === 'person') return "#1e40af"; // Blue
+          if (d.type === 'organization') return "#b91c1c"; // Red
+          if (d.type === 'event') return "#d97706"; // Amber
+          return "#3f3f46"; // Zinc
+        } else if (colorMode === 'community') {
+          return d3.schemeTableau10[(d.group || 0) % 10];
+        } else if (colorMode === 'kcore') {
+          // Viridis scale for K-Core (resilience)
+          // Interpolate domain 0-8 approx
+          return d3.interpolatePlasma((d.kCore || 0) / 8); 
+        } else if (colorMode === 'importance') {
+          // Magma scale for PageRank (influence)
+          return d3.interpolateMagma((d.centrality || 0) * 10); // Scale up small PR values
+        }
+        return "#3f3f46";
       })
       .attr("stroke", (d: any) => d.importance > 0.8 ? "#fbbf24" : "#27272a") // Amber-400 for leaders
       .attr("stroke-width", (d: any) => d.importance > 0.8 ? 3 : 1)
@@ -100,7 +113,7 @@ const GraphCanvas: React.FC<GraphCanvasProps> = ({ data, onNodeClick, highlightN
     if (highlightNodeId) {
       const highlightedNode = data.nodes.find(n => n.id === highlightNodeId);
       if (highlightedNode) {
-        // Simple zoom to node (requires re-selecting svg transition)
+        // Simple zoom to node
          svg.transition().duration(750).call(
            // @ts-ignore
            d3.zoom().transform,
@@ -129,12 +142,13 @@ const GraphCanvas: React.FC<GraphCanvasProps> = ({ data, onNodeClick, highlightN
     return () => {
       simulation.stop();
     };
-  }, [data, highlightNodeId]);
+  }, [data, highlightNodeId, colorMode]);
 
   return (
     <div ref={containerRef} className="w-full h-full bg-zinc-950 overflow-hidden relative">
-      <div className="absolute top-4 left-4 z-10 text-zinc-500 font-mono text-xs pointer-events-none">
-        GRAFIKA SIŁOWA v2.1 • SILNIK D3
+      <div className="absolute top-4 left-4 z-10 text-zinc-500 font-mono text-xs pointer-events-none flex flex-col gap-1">
+        <span>GRAFIKA SIŁOWA v2.2 • SILNIK D3</span>
+        <span>TRYB: {colorMode.toUpperCase()}</span>
       </div>
       <svg ref={svgRef} className="w-full h-full" />
     </div>
