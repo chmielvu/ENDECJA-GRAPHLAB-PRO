@@ -59,3 +59,29 @@ export interface ChatMessage {
   timestamp: number;
   isThinking?: boolean;
 }
+
+// Global Analysis Types
+
+export interface AnalysisMetrics {
+  density: number;
+  is_connected: boolean;
+  components: number;
+  diameter?: number;
+}
+
+export interface NodeMetrics {
+  betweenness: number;
+  pagerank: number;
+  degree: number;
+}
+
+export interface AnalysisResult {
+  type: 'global' | 'node';
+  timestamp: number;
+  metrics?: AnalysisMetrics; // For global analysis
+  nodeMetrics?: NodeMetrics; // For specific node analysis
+  top_influencers?: Array<{ id: string; label: string; score: number }>;
+  communities_summary?: string;
+  paths_to_key_figures?: Record<string, any>;
+  commentary: string; // The "Dmowski" textual explanation
+}

@@ -1,6 +1,6 @@
-import React, { useEffect, useRef, useState } from 'react';
+import React, { useEffect, useRef } from 'react';
 import * as d3 from 'd3';
-import { GraphData, Node, Link, ColorMode } from '../types';
+import { GraphData, Node, ColorMode } from '../types';
 
 interface GraphCanvasProps {
   data: GraphData;
@@ -70,8 +70,10 @@ const GraphCanvas: React.FC<GraphCanvasProps> = ({ data, onNodeClick, highlightN
           return d3.schemeTableau10[(d.group || 0) % 10];
         } else if (colorMode === 'kcore') {
           // Viridis scale for K-Core (resilience)
-          // Interpolate domain 0-8 approx
-          return d3.interpolatePlasma((d.kCore || 0) / 8); 
+          // Find max K for scaling
+          const maxK = 5; // heuristic max
+          const val = Math.min((d.kCore || 0) / maxK, 1);
+          return d3.interpolatePlasma(val); 
         } else if (colorMode === 'importance') {
           // Magma scale for PageRank (influence)
           return d3.interpolateMagma((d.centrality || 0) * 10); // Scale up small PR values

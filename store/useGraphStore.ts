@@ -1,6 +1,7 @@
 import { create } from 'zustand';
-import { GraphData, Node, Link, Myth } from '../types';
+import { GraphData, Node, Link, Myth, AnalysisResult } from '../types';
 import { INITIAL_DATA } from '../constants';
+import { analyzeGraphWithNetworkX } from '../services/geminiService';
 import Graph from 'graphology';
 import pagerank from 'graphology-metrics/centrality/pagerank';
 import louvain from 'graphology-communities-louvain';
@@ -8,9 +9,11 @@ import louvain from 'graphology-communities-louvain';
 interface GraphState {
   data: GraphData;
   isLoading: boolean;
+  isAnalyzing: boolean;
   highlightedNodeId: string | null;
   selectedNode: Node | null;
   activeMyth: Myth | null;
+  lastAnalysis: AnalysisResult | null;
   
   // Actions
   initializeGraph: () => void;
@@ -18,28 +21,27 @@ interface GraphState {
   setHighlight: (nodeId: string | null) => void;
   activateMyth: (myth: Myth) => void;
   addNodesFromAI: (newNodes: Node[], newEdges: Link[]) => void;
+  runGlobalAnalysis: (targetNodeId?: string) => Promise<void>;
 }
 
-// Helper for K-Core Decomposition (Iterative Peeling)
+// Client-side helper: K-Core Decomposition
 const computeKCore = (graph: Graph): Record<string, number> => {
   const g = graph.copy();
   const cores: Record<string, number> = {};
   
-  // Initialize all to 0
+  // Initialize
   g.forEachNode(node => { cores[node] = 0; });
   
   let k = 0;
-  // Safety break just in case
+  // Safety break
   while (g.order > 0 && k < 100) {
     let removed = true;
     while (removed) {
       removed = false;
-      // Find nodes with degree < k
       const nodesToRemove = g.filterNodes(node => g.degree(node) < k);
       
       if (nodesToRemove.length > 0) {
         nodesToRemove.forEach(node => {
-          // If removed at step k, it means it belongs to shell k-1
           cores[node] = Math.max(0, k - 1);
           g.dropNode(node);
         });
@@ -55,12 +57,14 @@ const computeKCore = (graph: Graph): Record<string, number> => {
 export const useGraphStore = create<GraphState>((set, get) => ({
   data: INITIAL_DATA,
   isLoading: false,
+  isAnalyzing: false,
   highlightedNodeId: null,
   selectedNode: null,
   activeMyth: null,
+  lastAnalysis: null,
 
   initializeGraph: () => {
-    // 1. Convert to Graphology instance for Analytics
+    // 1. Convert to Graphology
     const graph = new Graph();
     const { nodes, edges } = get().data;
 
@@ -68,29 +72,23 @@ export const useGraphStore = create<GraphState>((set, get) => ({
       if (!graph.hasNode(n.id)) graph.addNode(n.id, { ...n });
     });
     edges.forEach(e => {
-        const s = typeof e.source === 'string' ? e.source : e.source.id;
-        const t = typeof e.target === 'string' ? e.target : e.target.id;
+        const s = typeof e.source === 'string' ? e.source : (e.source as Node).id;
+        const t = typeof e.target === 'string' ? e.target : (e.target as Node).id;
         if (graph.hasNode(s) && graph.hasNode(t) && !graph.hasEdge(s, t)) {
             graph.addEdge(s, t);
         }
     });
 
-    // 2. Run Algorithms (The "Pro" Logic)
-    
-    // PageRank for Importance/Centrality
+    // 2. Run Client-side Algorithms
     const ranks = pagerank(graph);
-    
-    // Louvain for Communities
     const communities = louvain(graph);
-    
-    // K-Core Decomposition
     const cores = computeKCore(graph);
 
-    // 3. Update State with computed metrics
+    // 3. Update State
     const enrichedNodes = nodes.map(n => ({
       ...n,
-      importance: (ranks[n.id] || 0) * 10, // Scale up for visuals (Size)
-      centrality: ranks[n.id], // Raw PageRank value
+      importance: (ranks[n.id] || 0) * 10,
+      centrality: ranks[n.id],
       group: communities[n.id] || 0,
       kCore: cores[n.id] || 0
     }));
@@ -123,12 +121,12 @@ export const useGraphStore = create<GraphState>((set, get) => ({
       const mergedNodes = [...state.data.nodes, ...uniqueNewNodes];
       const mergedEdges = [...state.data.edges, ...newEdges];
 
-      // Re-run analytics immediately on new graph
+      // Re-run analytics immediately
       const graph = new Graph();
       mergedNodes.forEach(n => graph.addNode(n.id));
       mergedEdges.forEach(e => {
-          const s = typeof e.source === 'string' ? e.source : e.source.id;
-          const t = typeof e.target === 'string' ? e.target : e.target.id;
+          const s = typeof e.source === 'string' ? e.source : (e.source as Node).id;
+          const t = typeof e.target === 'string' ? e.target : (e.target as Node).id;
           if (graph.hasNode(s) && graph.hasNode(t)) graph.addEdge(s, t);
       });
 
@@ -148,5 +146,34 @@ export const useGraphStore = create<GraphState>((set, get) => ({
         data: { nodes: finalNodes, edges: mergedEdges, myths: state.data.myths }
       };
     });
+  },
+
+  // Global Analysis via Gemini
+  runGlobalAnalysis: async (targetNodeId) => {
+    set({ isAnalyzing: true, lastAnalysis: null });
+    const { nodes, edges } = get().data;
+
+    try {
+      const result = await analyzeGraphWithNetworkX(nodes, edges, targetNodeId);
+      
+      if (result && result.data) {
+        set({ 
+          lastAnalysis: {
+            type: targetNodeId ? 'node' : 'global',
+            timestamp: Date.now(),
+            metrics: result.data.global_metrics,
+            nodeMetrics: result.data.node_metrics,
+            top_influencers: result.data.top_influencers,
+            communities_summary: `Detected ${result.data.communities_count} communities`,
+            paths_to_key_figures: result.data.paths,
+            commentary: result.commentary
+          }
+        });
+      }
+    } catch (e) {
+      console.error("Global analysis failed", e);
+    } finally {
+      set({ isAnalyzing: false });
+    }
   }
 }));
